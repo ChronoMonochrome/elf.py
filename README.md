@@ -8,5 +8,6 @@ The end goal is to be able to read and modify ELF files.
 You need [fasm](https://flatassembler.net/) and [Python 3](https://www.python.org/downloads/):
 
 ```console
+$ pip install -r requirements.txt
 $ ./build.sh
 ```

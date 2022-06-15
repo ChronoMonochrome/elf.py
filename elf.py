@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 
-import struct
 import argparse
+import demjson3
+import json
+import os
+import struct
 
 # The ELF file header.  This appears at the start of every ELF file.
 
@@ -435,7 +438,9 @@ class BinaryReader:
 		self.file.close()
 		return self
 
-def main(input_file):
+def deserializeElf(input_file):
+	res = dict()
+
 	with BinaryReader(input_file) as br:
 		e_ident = br.readStruct(Elf_Ident, endian = ELFDATA2MSB)
 		assert(e_ident["ELF_MAG"] == ELFMAG)
@@ -452,19 +457,38 @@ def main(input_file):
 		else:
 			raise RuntimeError(f"Unknown EI_CLASS = {e_ident['EI_CLASS']}")
 
+		res["elf_ehdr"] = elf_ehdr
+		res["elf_phdrs"] = []
+
 		br.seek(elf_ehdr["e_phoff"])
+		print("EHDR")
+		print(elf_ehdr)
+		print("PHDR")
 		for _ in range(elf_ehdr["e_phnum"]):
 			elf_phdr = br.readStruct(Elf64_Phdr, endian = endian)
+			res["elf_phdrs"].append(elf_phdr)
 			print(elf_phdr)
 
-		br.seek(elf_phdr["p_offset"])
-		print(br.read("char", count = elf_phdr["p_filesz"]))
-		
-		print("OK")
-		#print(elf_ehdr)
+		for phdr in res["elf_phdrs"]:
+			br.seek(phdr["p_offset"])
+			#print(br.read("char", count = elf_phdr["p_filesz"]))
+
+	return res
+
+def main(input_file, output_file):
+	if not output_file:
+		basename = os.path.basename(input_file)
+		output_file = f"{basename}.json"
+
+	deserialized_elf = deserializeElf(input_file)
+	elf_json = json.dumps(json.loads(demjson3.encode(deserialized_elf)), indent = 4)
+	#print(elf_json)
+	
+	open(output_file, "wb").write(elf_json.encode("latin-1"))
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description = "Parse an ELF file")
 	parser.add_argument("-f", "--file", help = "input file", required = True)
+	parser.add_argument("-o", "--output", help = "output file", nargs = '?', type = str)
 	args = vars(parser.parse_args())
-	main(args["file"])
+	main(args["file"], args["output"])
