@@ -524,11 +524,12 @@ class ELF:
 
 def main(input_file, output_file, out_json = False, silent = False):
 	elf = ELF(input_file)
-	deserialized_elf = elf.deserialize()
+
 	if out_json:
 		if not output_file:
 			basename = os.path.basename(input_file)
 			output_file = f"{basename}.json"
+		deserialized_elf = elf.deserialize()
 		elf_json = json.dumps(json.loads(demjson3.encode(deserialized_elf)), indent = 4)
 		open(output_file, "wb").write(elf_json.encode("latin-1"))
 	else:
