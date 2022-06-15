@@ -4,4 +4,4 @@ set -xe
 
 fasm hello.S
 chmod +x ./hello
-./elf.py
+./elf.py -f ./hello

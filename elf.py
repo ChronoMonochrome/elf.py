@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import struct
+import argparse
 
 # The ELF file header.  This appears at the start of every ELF file.
 
@@ -434,9 +435,8 @@ class BinaryReader:
 		self.file.close()
 		return self
 
-def main():
-	elf_filename = "./hello"
-	with BinaryReader(elf_filename) as br:
+def main(input_file):
+	with BinaryReader(input_file) as br:
 		e_ident = br.readStruct(Elf_Ident, endian = ELFDATA2MSB)
 		assert(e_ident["ELF_MAG"] == ELFMAG)
 		assert(e_ident["EI_VERSION"] == EV_CURRENT)
@@ -464,4 +464,7 @@ def main():
 		#print(elf_ehdr)
 
 if __name__ == "__main__":
-	main()
+	parser = argparse.ArgumentParser(description = "Parse an ELF file")
+	parser.add_argument("-f", "--file", help = "input file", required = True)
+	args = vars(parser.parse_args())
+	main(args["file"])

@@ -9,5 +9,4 @@ You need [fasm](https://flatassembler.net/) and [Python 3](https://www.python.or
 
 ```console
 $ ./build.sh
-$ ./elf.py
 ```
