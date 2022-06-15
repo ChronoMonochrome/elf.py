@@ -364,16 +364,21 @@ class BinaryReader:
 	def tell(self):
 		return self.file.tell()	
 	
-	def read(self, typeName, count = 1):
+	def read(self, typeName, count = 1, endian = ELFDATA2LSB):
 		if typeName in self.schemes:
-			return self.readStruct(globals()[typeName])
+			return self.readStruct(globals()[typeName], endian)
+
+		if endian == ELFDATA2LSB:
+			endian = "<"
+		else:
+			endian = ">"
 
 		typeFormat = self.typeNames[typeName]
 		typeSize = count * struct.calcsize(typeFormat)
 		value = self.file.read(typeSize)
 		if typeSize != len(value):
 			raise RuntimeError("Not enough bytes in file to satisfy read request")
-		return struct.unpack(f"{count}{typeFormat}", value)[0]
+		return struct.unpack(f"{endian}{count}{typeFormat}", value)[0]
 		
 	def readBytes(self, numBytes):
 		return self.file.read(numBytes)
@@ -386,10 +391,10 @@ class BinaryReader:
 				return "".join(res)
 			res.append(c)
 
-	def readStruct(self, scheme):
+	def readStruct(self, scheme, endian = ELFDATA2LSB):
 		res = dict()
 		for name, (typename, count) in scheme:
-			res[name] = self.read(typename, count)
+			res[name] = self.read(typename, count, endian)
 
 		return res
 
@@ -405,16 +410,17 @@ class BinaryReader:
 def main():
 	elf_filename = "./hello"
 	with BinaryReader(elf_filename) as br:
-		e_ident = br.readStruct(Elf_Ident)
+		e_ident = br.readStruct(Elf_Ident, endian = ELFDATA2MSB)
 		assert(e_ident["ELF_MAG"] == ELFMAG)
 		assert(e_ident["EI_VERSION"] == EV_CURRENT)
+		endian = e_ident["EI_DATA"]
 
 		br.seek(0)
 		if e_ident["EI_CLASS"] == ELFCLASS32:
-			elf_ehdr = br.readStruct(Elf32_Ehdr)
+			elf_ehdr = br.readStruct(Elf32_Ehdr, endian = endian)
 			print("This is 32-bit ELF file")
 		elif e_ident["EI_CLASS"] == ELFCLASS64:
-			elf_ehdr = br.readStruct(Elf64_Ehdr)
+			elf_ehdr = br.readStruct(Elf64_Ehdr, endian = endian)
 			print("This is 64-bit ELF file")
 		else:
 			raise RuntimeError(f"Unknown EI_CLASS = {e_ident['EI_CLASS']}")
