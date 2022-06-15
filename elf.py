@@ -503,15 +503,26 @@ class ELF:
 				self.shdrs.append(elf_shdr)
 
 	def deserialize(self):
+		global args
 		res = dict()
 		res["ELF"] = dict()
 		res["ELF"]["ehdr"] = self.ehdr
 		res["ELF"]["phdrs"] = self.phdrs
 		res["ELF"]["shdrs"] = self.shdrs
 
+		if not args["silent"]:
+			print("EHDR")
+			print(res["ELF"]["ehdr"])
+			print("PHDR")
+			for phdr in res["ELF"]["phdrs"]:
+				print(phdr)
+			print("SHDR")
+			for shdr in res["ELF"]["shdrs"]:
+				print(shdr)
+		
 		return res
 
-def main(input_file, output_file, out_json = False):
+def main(input_file, output_file, out_json = False, silent = False):
 	elf = ELF(input_file)
 	deserialized_elf = elf.deserialize()
 	if out_json:
@@ -527,6 +538,7 @@ if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description = "Parse an ELF file")
 	parser.add_argument("-f", "--file", help = "input file", required = True)
 	parser.add_argument("-j", "--json", help = "dump to JSON", action = argparse.BooleanOptionalAction)
+	parser.add_argument("-s", "--silent", help = "disable debug information", action = argparse.BooleanOptionalAction)
 	parser.add_argument("-o", "--output", help = "output file", nargs = '?', type = str)
 	args = vars(parser.parse_args())
-	main(args["file"], args["output"], out_json = args["json"])
+	main(args["file"], args["output"], out_json = args["json"], silent = args["silent"])
