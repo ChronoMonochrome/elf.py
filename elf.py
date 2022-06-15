@@ -382,7 +382,7 @@ Elf64_Shdr = [
   ("sh_entsize",   ("Elf64_Xword", 1))   # Entry size if section holds table 
 ]
 
-class BinaryReader:
+class BinaryMarshaller:
 	# Map well-known type names into struct format characters.
 	def __init__(self, file):
 		self.typeNames = {
@@ -437,6 +437,21 @@ class BinaryReader:
 		if typeSize != len(value):
 			raise RuntimeError("Not enough bytes in file to satisfy read request")
 		return struct.unpack(f"{endian}{count}{typeFormat}", value)[0]
+
+	def write(self, obj, typeName, count, endian = ELFDATA2LSB):
+		if typeName in self.schemes:
+			self.writeStruct(obj, globals()[typeName], endian)
+			return
+
+		if endian == ELFDATA2LSB:
+			endian = "<"
+		else:
+			endian = ">"
+
+		typeFormat = self.typeNames[typeName]
+		typeSize = count * struct.calcsize(typeFormat)
+		obj_packed = struct.pack(f"{endian}{count}{typeFormat}", obj)	
+		self.file.write(obj_packed)
 		
 	def readBytes(self, numBytes):
 		return self.file.read(numBytes)
@@ -456,13 +471,13 @@ class BinaryReader:
 
 		return res
 
-	def __del__(self):
-		self.file.close()
-		
+	def writeStruct(self, struct, scheme, endian = ELFDATA2LSB):
+		for name, (typename, count) in scheme:
+			self.write(struct[name], typename, count, endian)
+
 	def __exit__(self, exc_type, exc_value, traceback):
 		if exc_type is not None:
 			raise
-		self.file.close()
 		return self
 
 class ELF:
@@ -471,46 +486,40 @@ class ELF:
 		self._parse()
 
 	def _parse(self):
-		with BinaryReader(self.file) as br:
-			self.e_ident = br.readStruct(Elf_Ident, endian = ELFDATA2MSB)
+		with BinaryMarshaller(self.file) as bm:
+			self.e_ident = bm.readStruct(Elf_Ident, endian = ELFDATA2MSB)
 			assert(self.e_ident["ELF_MAG"] == ELFMAG)
 			assert(self.e_ident["EI_VERSION"] == EV_CURRENT)
 			endian = self.e_ident["EI_DATA"]
 
-			br.seek(0)
+			bm.seek(0)
 			if self.e_ident["EI_CLASS"] == ELFCLASS32:
 				Elf_Phdr = Elf32_Phdr
 				Elf_Shdr = Elf32_Shdr
-				self.ehdr = br.readStruct(Elf32_Ehdr, endian = endian)
+				self.ehdr = bm.readStruct(Elf32_Ehdr, endian = endian)
 			elif self.e_ident["EI_CLASS"] == ELFCLASS64:
 				Elf_Phdr = Elf64_Phdr
 				Elf_Shdr = Elf64_Shdr
-				self.ehdr = br.readStruct(Elf64_Ehdr, endian = endian)
+				self.ehdr = bm.readStruct(Elf64_Ehdr, endian = endian)
 			else:
 				raise RuntimeError(f"Unknown EI_CLASS = {e_ident['EI_CLASS']}")
 
-			br.seek(self.ehdr["e_phoff"])
+			bm.seek(self.ehdr["e_phoff"])
 
 			self.phdrs = []
 			self.shdrs = []
 
 			for _ in range(self.ehdr["e_phnum"]):
-				elf_phdr = br.readStruct(Elf_Phdr, endian = endian)
+				elf_phdr = bm.readStruct(Elf_Phdr, endian = endian)
 				self.phdrs.append(elf_phdr)
 
-			br.seek(self.ehdr["e_shoff"])
+			bm.seek(self.ehdr["e_shoff"])
 			for _ in range(self.ehdr["e_shnum"]):
-				elf_shdr = br.readStruct(Elf_Shdr, endian = endian)
+				elf_shdr = bm.readStruct(Elf_Shdr, endian = endian)
 				self.shdrs.append(elf_shdr)
 
-	def deserialize(self):
+	def debug(self, res):
 		global args
-		res = dict()
-		res["ELF"] = dict()
-		res["ELF"]["ehdr"] = self.ehdr
-		res["ELF"]["phdrs"] = self.phdrs
-		res["ELF"]["shdrs"] = self.shdrs
-
 		if not args["silent"]:
 			print("EHDR")
 			print(res["ELF"]["ehdr"])
@@ -520,8 +529,53 @@ class ELF:
 			print("SHDR")
 			for shdr in res["ELF"]["shdrs"]:
 				print(shdr)
+
+	def deserialize(self):
+		global args
+		res = dict()
+		res["ELF"] = dict()
+		res["ELF"]["ehdr"] = self.ehdr
+		res["ELF"]["phdrs"] = self.phdrs
+		res["ELF"]["shdrs"] = self.shdrs
+
+		self.debug(res)
 		
 		return res
+
+	def serialize(self):
+		with BinaryMarshaller(self.file) as bm:
+			if self.e_ident["EI_CLASS"] == ELFCLASS32:
+				Elf_Ehdr = Elf32_Ehdr
+				Elf_Phdr = Elf32_Phdr
+				Elf_Shdr = Elf32_Shdr
+			elif self.e_ident["EI_CLASS"] == ELFCLASS64:
+				Elf_Ehdr = Elf64_Ehdr
+				Elf_Phdr = Elf64_Phdr
+				Elf_Shdr = Elf64_Shdr
+			else:
+				raise RuntimeError(f"Unknown EI_CLASS = {e_ident['EI_CLASS']}")
+
+			endian = self.e_ident["EI_DATA"]
+
+			bm.writeStruct(self.ehdr, Elf_Ehdr)
+			bm.seek(self.ehdr["e_phoff"])
+
+			for i in range(self.ehdr["e_phnum"]):
+				bm.writeStruct(self.phdrs[i], Elf_Phdr, endian = endian)
+
+			bm.seek(self.ehdr["e_shoff"])
+			for i in range(self.ehdr["e_shnum"]):
+				bm.writeStruct(self.shdrs[i], Elf_Shdr, endian = endian)
+
+			res = self.deserialize()
+
+			self.debug(res)
+
+			self.file = io.BytesIO(bm.file.getbuffer().tobytes())
+
+	def read(self):
+		self.serialize()
+		return self.file.getbuffer().tobytes()
 
 def main(input_file, output_file, out_json = False, silent = False):
 	elf = ELF(input_file)
@@ -534,7 +588,10 @@ def main(input_file, output_file, out_json = False, silent = False):
 		elf_json = json.dumps(json.loads(demjson3.encode(deserialized_elf)), indent = 4)
 		open(output_file, "wb").write(elf_json.encode("latin-1"))
 	else:
-		print("TODO: ELF serialization is not implemented")
+		if not output_file:
+			basename = os.path.basename(input_file)
+			output_file = f"{basename}_modified"
+		open(output_file, "wb").write(elf.read())
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description = "Parse an ELF file")
