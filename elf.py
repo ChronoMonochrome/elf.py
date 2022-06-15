@@ -516,20 +516,21 @@ def deserializeElf(input_file):
 
 	return res
 
-def main(input_file, output_file):
-	if not output_file:
-		basename = os.path.basename(input_file)
-		output_file = f"{basename}.json"
-
+def main(input_file, output_file, out_json = False):
 	deserialized_elf = deserializeElf(input_file)
-	elf_json = json.dumps(json.loads(demjson3.encode(deserialized_elf)), indent = 4)
-	#print(elf_json)
-	
-	open(output_file, "wb").write(elf_json.encode("latin-1"))
+	if out_json:
+		if not output_file:
+			basename = os.path.basename(input_file)
+			output_file = f"{basename}.json"
+		elf_json = json.dumps(json.loads(demjson3.encode(deserialized_elf)), indent = 4)
+		open(output_file, "wb").write(elf_json.encode("latin-1"))
+	else:
+		print("TODO: ELF serialization is not implemented")
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description = "Parse an ELF file")
 	parser.add_argument("-f", "--file", help = "input file", required = True)
+	parser.add_argument("-j", "--json", help = "dump to JSON", action = argparse.BooleanOptionalAction)
 	parser.add_argument("-o", "--output", help = "output file", nargs = '?', type = str)
 	args = vars(parser.parse_args())
-	main(args["file"], args["output"])
+	main(args["file"], args["output"], out_json = args["json"])
