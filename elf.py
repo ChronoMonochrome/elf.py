@@ -2,6 +2,7 @@
 
 import argparse
 import demjson3
+import io
 import json
 import os
 import struct
@@ -383,7 +384,7 @@ Elf64_Shdr = [
 
 class BinaryReader:
 	# Map well-known type names into struct format characters.
-	def __init__(self, fileName):
+	def __init__(self, file):
 		self.typeNames = {
 			'int8'         :'b',
 			'uint8'        :'B',
@@ -407,11 +408,9 @@ class BinaryReader:
 			'Elf64_Xword'  :'Q'
 		}
 		self.schemes = ["Elf_Ident", "Elf32_Ehdr", "Elf64_Ehdr"]
-		self.fileName = fileName
-		self.file = open(fileName, 'rb')
+		self.file = file
 		
 	def __enter__(self):
-		self.file = open(self.fileName, 'rb')
 		return self
 
 	def seek(self, offset, from_what = None):
@@ -466,58 +465,55 @@ class BinaryReader:
 		self.file.close()
 		return self
 
-def deserializeElf(input_file):
-	res = dict()
+class ELF:
+	def __init__(self, input_file):
+		self.file = io.BytesIO(open(input_file, "rb").read())
 
-	with BinaryReader(input_file) as br:
-		e_ident = br.readStruct(Elf_Ident, endian = ELFDATA2MSB)
-		assert(e_ident["ELF_MAG"] == ELFMAG)
-		assert(e_ident["EI_VERSION"] == EV_CURRENT)
-		endian = e_ident["EI_DATA"]
+		with BinaryReader(self.file) as br:
+			self.e_ident = br.readStruct(Elf_Ident, endian = ELFDATA2MSB)
+			assert(self.e_ident["ELF_MAG"] == ELFMAG)
+			assert(self.e_ident["EI_VERSION"] == EV_CURRENT)
+			endian = self.e_ident["EI_DATA"]
 
-		br.seek(0)
-		if e_ident["EI_CLASS"] == ELFCLASS32:
-			Elf_Phdr = Elf32_Phdr
-			Elf_Shdr = Elf32_Shdr
-			elf_ehdr = br.readStruct(Elf32_Ehdr, endian = endian)
-			print("This is 32-bit ELF file")
-		elif e_ident["EI_CLASS"] == ELFCLASS64:
-			Elf_Phdr = Elf64_Phdr
-			Elf_Shdr = Elf64_Shdr
-			elf_ehdr = br.readStruct(Elf64_Ehdr, endian = endian)
-			print("This is 64-bit ELF file")
-		else:
-			raise RuntimeError(f"Unknown EI_CLASS = {e_ident['EI_CLASS']}")
+			br.seek(0)
+			if self.e_ident["EI_CLASS"] == ELFCLASS32:
+				Elf_Phdr = Elf32_Phdr
+				Elf_Shdr = Elf32_Shdr
+				self.ehdr = br.readStruct(Elf32_Ehdr, endian = endian)
+			elif self.e_ident["EI_CLASS"] == ELFCLASS64:
+				Elf_Phdr = Elf64_Phdr
+				Elf_Shdr = Elf64_Shdr
+				self.ehdr = br.readStruct(Elf64_Ehdr, endian = endian)
+			else:
+				raise RuntimeError(f"Unknown EI_CLASS = {e_ident['EI_CLASS']}")
 
-		res["elf_ehdr"] = elf_ehdr
-		res["elf_phdrs"] = []
-		res["elf_shdrs"] = []
 
-		br.seek(elf_ehdr["e_phoff"])
-		print("EHDR")
+			br.seek(self.ehdr["e_phoff"])
 
-		print(elf_ehdr)
-		print("PHDR")
-		for _ in range(elf_ehdr["e_phnum"]):
-			elf_phdr = br.readStruct(Elf_Phdr, endian = endian)
-			res["elf_phdrs"].append(elf_phdr)
-			print(elf_phdr)
+			self.phdrs = []
+			self.shdrs = []
 
-		br.seek(elf_ehdr["e_shoff"])
-		print("SHDR")
-		for _ in range(elf_ehdr["e_shnum"]):
-			elf_shdr = br.readStruct(Elf_Shdr, endian = endian)
-			res["elf_shdrs"].append(elf_shdr)
-			print(elf_shdr)
+			for _ in range(self.ehdr["e_phnum"]):
+				elf_phdr = br.readStruct(Elf_Phdr, endian = endian)
+				self.phdrs.append(elf_phdr)
 
-		#for phdr in res["elf_phdrs"]:
-		#	br.seek(phdr["p_offset"])
-		#	#print(br.read("char", count = elf_phdr["p_filesz"]))
+			br.seek(self.ehdr["e_shoff"])
+			for _ in range(self.ehdr["e_shnum"]):
+				elf_shdr = br.readStruct(Elf_Shdr, endian = endian)
+				self.shdrs.append(elf_shdr)
 
-	return res
+	def deserialize(self):
+		res = dict()
+		res["ELF"] = dict()
+		res["ELF"]["ehdr"] = self.ehdr
+		res["ELF"]["phdrs"] = self.phdrs
+		res["ELF"]["shdrs"] = self.shdrs
+
+		return res
 
 def main(input_file, output_file, out_json = False):
-	deserialized_elf = deserializeElf(input_file)
+	elf = ELF(input_file)
+	deserialized_elf = elf.deserialize()
 	if out_json:
 		if not output_file:
 			basename = os.path.basename(input_file)
