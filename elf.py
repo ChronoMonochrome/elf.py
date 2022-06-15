@@ -1,7 +1,8 @@
 import struct
 
-EI_NIDENT = 16
+# The ELF file header.  This appears at the start of every ELF file.
 
+EI_NIDENT = 16
 
 EI_MAG0 = 0  # File identification byte 0 index
 ELFMAG0 = 0x7F  # Magic number byte 0
@@ -18,6 +19,50 @@ ELFMAG3 = "F"  # Magic number byte 3
 # Conglomeration of the identification bytes, for easy testing as a word.
 ELFMAG = b"\x7fELF"
 SELFMAG = 4
+
+Elf_Ident = [
+    ("ELF_MAG",       ("char", SELFMAG)),
+    ("EI_CLASS",      ("uint8", 1)),
+    ("EI_DATA",       ("uint8", 1)),
+    ("EI_VERSION",    ("uint8", 1)),
+    ("EI_OSABI",      ("uint8", 1)),
+    ("EI_ABIVERSION", ("uint8", 1)),
+    ("EI_PAD",        ("char",  7)),
+]
+
+Elf32_Ehdr = [
+    ("e_ident",     ("Elf_Ident",  1)),    # Magic number and other info 
+    ("e_type",      ("Elf32_Half", 1)),    # Object file type 
+    ("e_machine",   ("Elf32_Half", 1)),    # Architecture 
+    ("e_version",   ("Elf32_Word", 1)),    # Object file version 
+    ("e_entry",     ("Elf32_Addr", 1)),    # Entry point virtual address 
+    ("e_phoff",     ("Elf32_Off",  1)),    # Program header table file offset 
+    ("e_shoff",     ("Elf32_Off",  1)),    # Section header table file offset 
+    ("e_flags",     ("Elf32_Word", 1)),    # Processor-specific flags 
+    ("e_ehsize",    ("Elf32_Half", 1)),    # ELF header size in bytes 
+    ("e_phentsize", ("Elf32_Half", 1)),    # Program header table entry size 
+    ("e_phnum",     ("Elf32_Half", 1)),    # Program header table entry count 
+    ("e_shentsize", ("Elf32_Half", 1)),    # Section header table entry size 
+    ("e_shnum",     ("Elf32_Half", 1)),    # Section header table entry count 
+    ("e_shstrndx",  ("Elf32_Half", 1))     # Section header string table index 
+]
+
+Elf64_Ehdr = [
+    ("e_ident",     ("Elf_Ident",  1)),    # Magic number and other info 
+    ("e_type",      ("Elf64_Half", 1)),    # Object file type 
+    ("e_machine",   ("Elf64_Half", 1)),    # Architecture 
+    ("e_version",   ("Elf64_Word", 1)),    # Object file version 
+    ("e_entry",     ("Elf64_Addr", 1)),    # Entry point virtual address 
+    ("e_phoff",     ("Elf64_Off",  1)),    # Program header table file offset 
+    ("e_shoff",     ("Elf64_Off",  1)),    # Section header table file offset 
+    ("e_flags",     ("Elf64_Word", 1)),    # Processor-specific flags 
+    ("e_ehsize",    ("Elf64_Half", 1)),    # ELF header size in bytes 
+    ("e_phentsize", ("Elf64_Half", 1)),    # Program header table entry size 
+    ("e_phnum",     ("Elf64_Half", 1)),    # Program header table entry count 
+    ("e_shentsize", ("Elf64_Half", 1)),    # Section header table entry size 
+    ("e_shnum",     ("Elf64_Half", 1)),    # Section header table entry count 
+    ("e_shstrndx",  ("Elf64_Half", 1))     # Section header string table index 
+]
 
 EI_CLASS = 4  # File class byte index
 ELFCLASSNONE = 0  # Invalid class
@@ -278,49 +323,28 @@ EV_NONE = 0  # Invalid ELF version
 EV_CURRENT = 1  # Current version
 EV_NUM = 2
 
+# Program segment header
 
-Elf_Ident = [
-	("ELF_MAG",       ("char", SELFMAG)),
-    ("EI_CLASS",      ("uint8", 1)),
-    ("EI_DATA",       ("uint8", 1)),
-    ("EI_VERSION",    ("uint8", 1)),
-    ("EI_OSABI",      ("uint8", 1)),
-    ("EI_ABIVERSION", ("uint8", 1)),
-    ("EI_PAD",        ("char",  7)),
+Elf32_Phdr = [
+  ("p_type",	("Elf32_Word", 1)),  # Segment type
+  ("p_offset",	("Elf32_Off",  1)),  # Segment file offset
+  ("p_vaddr",	("Elf32_Addr", 1)),  # Segment virtual address
+  ("p_paddr",	("Elf32_Addr", 1)),  # Segment physical address 
+  ("p_filesz",	("Elf32_Word", 1)),  # Segment size in file 
+  ("p_memsz",	("Elf32_Word", 1)),  # Segment size in memory 
+  ("p_flags",	("Elf32_Word", 1)),  # Segment flags 
+  ("p_align",	("Elf32_Word", 1))   # Segment alignment 
 ]
 
-Elf32_Ehdr = [
-	("e_ident",     ("Elf_Ident",  1)),    # Magic number and other info 
-  	("e_type",      ("Elf32_Half", 1)),    # Object file type 
-  	("e_machine",   ("Elf32_Half", 1)),    # Architecture 
-  	("e_version",   ("Elf32_Word", 1)),    # Object file version 
-  	("e_entry",     ("Elf32_Addr", 1)),    # Entry point virtual address 
-  	("e_phoff",     ("Elf32_Off",  1)),    # Program header table file offset 
-  	("e_shoff",     ("Elf32_Off",  1)),    # Section header table file offset 
-  	("e_flags",     ("Elf32_Word", 1)),    # Processor-specific flags 
-  	("e_ehsize",    ("Elf32_Half", 1)),    # ELF header size in bytes 
-  	("e_phentsize", ("Elf32_Half", 1)),    # Program header table entry size 
-  	("e_phnum",     ("Elf32_Half", 1)),    # Program header table entry count 
-  	("e_shentsize", ("Elf32_Half", 1)),    # Section header table entry size 
-  	("e_shnum",     ("Elf32_Half", 1)),    # Section header table entry count 
-  	("e_shstrndx",  ("Elf32_Half", 1))     # Section header string table index 
-]
-
-Elf64_Ehdr = [
-	("e_ident",     ("Elf_Ident",  1)),    # Magic number and other info 
-  	("e_type",      ("Elf64_Half", 1)),    # Object file type 
-  	("e_machine",   ("Elf64_Half", 1)),    # Architecture 
-  	("e_version",   ("Elf64_Word", 1)),    # Object file version 
-  	("e_entry",     ("Elf64_Addr", 1)),    # Entry point virtual address 
-  	("e_phoff",     ("Elf64_Off",  1)),    # Program header table file offset 
-  	("e_shoff",     ("Elf64_Off",  1)),    # Section header table file offset 
-  	("e_flags",     ("Elf64_Word", 1)),    # Processor-specific flags 
-  	("e_ehsize",    ("Elf64_Half", 1)),    # ELF header size in bytes 
-  	("e_phentsize", ("Elf64_Half", 1)),    # Program header table entry size 
-  	("e_phnum",     ("Elf64_Half", 1)),    # Program header table entry count 
-  	("e_shentsize", ("Elf64_Half", 1)),    # Section header table entry size 
-  	("e_shnum",     ("Elf64_Half", 1)),    # Section header table entry count 
-  	("e_shstrndx",  ("Elf64_Half", 1))     # Section header string table index 
+Elf64_Phdr = [
+  ("p_type",    ("Elf64_Word", 1)),  # Segment type 
+  ("p_flags",   ("Elf64_Word", 1)),  # Segment flags 
+  ("p_offset",  ("Elf64_Off", 1)),   # Segment file offset 
+  ("p_vaddr",   ("Elf64_Addr", 1)),  # Segment virtual address 
+  ("p_paddr",   ("Elf64_Addr", 1)),  # Segment physical address 
+  ("p_filesz",  ("Elf64_Xword", 1)), # Segment size in file 
+  ("p_memsz",   ("Elf64_Xword", 1)), # Segment size in memory 
+  ("p_align",   ("Elf64_Xword", 1)) # Segment alignment 
 ]
 
 class BinaryReader:
@@ -345,7 +369,8 @@ class BinaryReader:
 			'Elf64_Half'   :'H',
 			'Elf64_Word'   :'I',
 			'Elf64_Off'    :'Q',
-			'Elf64_Addr'   :'Q'
+			'Elf64_Addr'   :'Q',
+			'Elf64_Xword'  :'Q'
 		}
 		self.schemes = ["Elf_Ident", "Elf32_Ehdr", "Elf64_Ehdr"]
 		self.fileName = fileName
@@ -424,9 +449,17 @@ def main():
 			print("This is 64-bit ELF file")
 		else:
 			raise RuntimeError(f"Unknown EI_CLASS = {e_ident['EI_CLASS']}")
+
+		br.seek(elf_ehdr["e_phoff"])
+		for _ in range(elf_ehdr["e_phnum"]):
+			elf_phdr = br.readStruct(Elf64_Phdr, endian = endian)
+			print(elf_phdr)
+
+		br.seek(elf_phdr["p_offset"])
+		print(br.read("char", count = elf_phdr["p_filesz"]))
 		
 		print("OK")
-		print(elf_ehdr)
+		#print(elf_ehdr)
 
 if __name__ == "__main__":
 	main()
