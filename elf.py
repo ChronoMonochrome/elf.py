@@ -468,7 +468,9 @@ class BinaryReader:
 class ELF:
 	def __init__(self, input_file):
 		self.file = io.BytesIO(open(input_file, "rb").read())
+		self._parse()
 
+	def _parse(self):
 		with BinaryReader(self.file) as br:
 			self.e_ident = br.readStruct(Elf_Ident, endian = ELFDATA2MSB)
 			assert(self.e_ident["ELF_MAG"] == ELFMAG)
@@ -486,7 +488,6 @@ class ELF:
 				self.ehdr = br.readStruct(Elf64_Ehdr, endian = endian)
 			else:
 				raise RuntimeError(f"Unknown EI_CLASS = {e_ident['EI_CLASS']}")
-
 
 			br.seek(self.ehdr["e_phoff"])
 
