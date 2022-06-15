@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import struct
 
 # The ELF file header.  This appears at the start of every ELF file.
