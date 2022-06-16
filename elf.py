@@ -688,6 +688,24 @@ def main(input_file, output_file, out_json = False, silent = False, debug = Fals
 		if not output_file:
 			basename = os.path.basename(input_file)
 			output_file = f"{basename}_modified"
+
+		code_segment_found = False
+		for phdr in elf.phdrs:
+			if phdr["p_flags"] == PF_R | PF_X and phdr["p_type"] == PT_LOAD:
+				code_segment_found = True
+				code_phdr = phdr
+				break
+
+		if not code_segment_found:
+			print("Warning: no code segment found")
+		else:
+			code_phdr["p_memsz"] += 4096
+			code_phdr["p_filesz"] += 4096
+			code_contents, code_start, code_size = code_phdr["contents"]
+			code_size += 4096
+			code_contents = code_contents.replace(b"Hello, World!", b"Your Mom!")
+			code_phdr["contents"] = [code_contents.ljust(code_size, b"\x00"), code_start, code_size]
+			elf.ehdr["e_shoff"] += 4096
 		open(output_file, "wb").write(elf.read())
 
 if __name__ == "__main__":
