@@ -354,6 +354,43 @@ Elf64_Phdr = [
   ("p_align",      ("Elf64_Xword", 1))   # Segment alignment 
 ]
 
+# Special value for e_phnum.  This indicates that the real number of
+#   program headers is too large to fit into e_phnum.  Instead the real
+#   value is in the field sh_info of section 0.
+
+PN_XNUM = 0xffff
+
+# Legal values for p_type (segment type).
+
+PT_NULL          = 0            # Program header table entry unused 
+PT_LOAD          = 1            # Loadable program segment 
+PT_DYNAMIC       = 2            # Dynamic linking information 
+PT_INTERP        = 3            # Program interpreter 
+PT_NOTE          = 4            # Auxiliary information 
+PT_SHLIB         = 5            # Reserved 
+PT_PHDR          = 6            # Entry for header table itself 
+PT_TLS           = 7            # Thread-local storage segment 
+PT_NUM           = 8            # Number of defined types 
+PT_LOOS          = 0x60000000   # Start of OS-specific 
+PT_GNU_EH_FRAME  = 0x6474e550   # GCC .eh_frame_hdr segment 
+PT_GNU_STACK     = 0x6474e551   # Indicates stack executability 
+PT_GNU_RELRO     = 0x6474e552   # Read-only after relocation 
+PT_LOSUNW        = 0x6ffffffa
+PT_SUNWBSS       = 0x6ffffffa   # Sun Specific segment 
+PT_SUNWSTACK     = 0x6ffffffb   # Stack segment 
+PT_HISUNW        = 0x6fffffff
+PT_HIOS          = 0x6fffffff   # End of OS-specific 
+PT_LOPROC        = 0x70000000   # Start of processor-specific 
+PT_HIPROC        = 0x7fffffff   # End of processor-specific 
+
+# Legal values for p_flags (segment flags).  
+
+PF_X        = (1 << 0)      # Segment is executable 
+PF_W        = (1 << 1)	    # Segment is writable 
+PF_R        = (1 << 2)	    # Segment is readable 
+PF_MASKOS   = 0x0ff00000    # OS-specific 
+PF_MASKPROC = 0xf0000000    # Processor-specific 
+
 # Section header.
 
 Elf32_Shdr = [
@@ -455,6 +492,9 @@ class BinaryMarshaller:
 		
 	def readBytes(self, numBytes):
 		return self.file.read(numBytes)
+
+	def writeBytes(self, obj):
+		return self.file.write(obj)
 		
 	def readCString(self, iLen = 1):
 		res = []
@@ -508,19 +548,39 @@ class ELF:
 
 			self.phdrs = []
 			self.shdrs = []
+			self.segments = []
+			self.sections = []
 
 			for _ in range(self.ehdr["e_phnum"]):
 				elf_phdr = bm.readStruct(Elf_Phdr, endian = endian)
 				self.phdrs.append(elf_phdr)
+				if elf_phdr["p_type"] == PT_LOAD:
+					cursor = bm.tell()
+					new_cursor = elf_phdr["p_offset"]
+					segment_size = elf_phdr["p_filesz"]
+					if new_cursor == 0:
+						new_cursor += self.ehdr["e_ehsize"]
+						segment_size -= self.ehdr["e_ehsize"]
+					bm.seek(new_cursor)
+					segment = bm.readBytes(segment_size)
+					bm.seek(cursor)
+					self.segments.append([segment, new_cursor, segment_size])
 
 			bm.seek(self.ehdr["e_shoff"])
 			for _ in range(self.ehdr["e_shnum"]):
 				elf_shdr = bm.readStruct(Elf_Shdr, endian = endian)
 				self.shdrs.append(elf_shdr)
+				cursor = bm.tell()
+				new_cursor = elf_shdr["sh_offset"]
+				section_size = elf_shdr["sh_size"]
+				bm.seek(new_cursor)
+				section = bm.readBytes(section_size)
+				self.sections.append([section, new_cursor, section_size])
+				bm.seek(cursor)
 
 	def debug(self, res):
 		global args
-		if not args["silent"]:
+		if args["debug"]:
 			print("EHDR")
 			print(res["ELF"]["ehdr"])
 			print("PHDR")
@@ -537,13 +597,26 @@ class ELF:
 		res["ELF"]["ehdr"] = self.ehdr
 		res["ELF"]["phdrs"] = self.phdrs
 		res["ELF"]["shdrs"] = self.shdrs
+		res["ELF"]["segments"] = self.segments
+		res["ELF"]["sections"] = self.sections
 
 		self.debug(res)
 		
 		return res
 
+	def getFileSize(self):
+		if self.ehdr["e_shoff"] > 0:
+			return self.ehdr["e_shoff"] + len(self.shdrs) * self.ehdr["e_shentsize"]
+		else:
+			res = 0
+			for phdr in self.phdrs:
+				if phdr["p_type"] == PT_LOAD:
+					res += phdr["p_filesz"]
+			return res
+
 	def serialize(self):
-		with BinaryMarshaller(self.file) as bm:
+		buf = io.BytesIO(b"\x00" * self.getFileSize())
+		with BinaryMarshaller(buf) as bm:
 			if self.e_ident["EI_CLASS"] == ELFCLASS32:
 				Elf_Ehdr = Elf32_Ehdr
 				Elf_Phdr = Elf32_Phdr
@@ -567,6 +640,14 @@ class ELF:
 			for i in range(self.ehdr["e_shnum"]):
 				bm.writeStruct(self.shdrs[i], Elf_Shdr, endian = endian)
 
+			for seg_contents, seg_start, seg_size in self.segments:
+				bm.seek(seg_start)
+				bm.writeBytes(seg_contents)
+
+			for section_contents, section_start, section_size in self.sections:
+				bm.seek(section_start)
+				bm.writeBytes(section_contents)
+
 			res = self.deserialize()
 
 			self.debug(res)
@@ -577,9 +658,13 @@ class ELF:
 		self.serialize()
 		return self.file.getbuffer().tobytes()
 
-def main(input_file, output_file, out_json = False, silent = False):
+def ALIGN(num, alignment):
+	return (num//alignment + (1 if num/alignment > num//alignment else 0))*alignment
+
+def main(input_file, output_file, out_json = False, silent = False, debug = False):
 	elf = ELF(input_file)
 
+	print(f"ELF file size: {elf.getFileSize()}")
 	if out_json:
 		if not output_file:
 			basename = os.path.basename(input_file)
@@ -597,7 +682,8 @@ if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description = "Parse an ELF file")
 	parser.add_argument("-f", "--file", help = "input file", required = True)
 	parser.add_argument("-j", "--json", help = "dump to JSON", action = argparse.BooleanOptionalAction)
-	parser.add_argument("-s", "--silent", help = "disable debug information", action = argparse.BooleanOptionalAction)
+	parser.add_argument("-d", "--debug", help = "verbose debugging", action = argparse.BooleanOptionalAction)
+	parser.add_argument("-s", "--silent", help = "silent mode", action = argparse.BooleanOptionalAction)
 	parser.add_argument("-o", "--output", help = "output file", nargs = '?', type = str)
 	args = vars(parser.parse_args())
-	main(args["file"], args["output"], out_json = args["json"], silent = args["silent"])
+	main(args["file"], args["output"], out_json = args["json"], silent = args["silent"], debug = args["debug"])
