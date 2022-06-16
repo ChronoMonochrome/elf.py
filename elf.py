@@ -548,8 +548,6 @@ class ELF:
 
 			self.phdrs = []
 			self.shdrs = []
-			self.segments = []
-			self.sections = []
 
 			for _ in range(self.ehdr["e_phnum"]):
 				elf_phdr = bm.readStruct(Elf_Phdr, endian = endian)
@@ -564,7 +562,7 @@ class ELF:
 					bm.seek(new_cursor)
 					segment = bm.readBytes(segment_size)
 					bm.seek(cursor)
-					self.segments.append([segment, new_cursor, segment_size])
+					elf_phdr["contents"] = [segment, new_cursor, segment_size]
 
 			bm.seek(self.ehdr["e_shoff"])
 			for _ in range(self.ehdr["e_shnum"]):
@@ -575,7 +573,7 @@ class ELF:
 				section_size = elf_shdr["sh_size"]
 				bm.seek(new_cursor)
 				section = bm.readBytes(section_size)
-				self.sections.append([section, new_cursor, section_size])
+				elf_shdr["contents"] = [section, new_cursor, section_size]
 				bm.seek(cursor)
 
 	def debug(self, res):
@@ -597,8 +595,6 @@ class ELF:
 		res["ELF"]["ehdr"] = self.ehdr
 		res["ELF"]["phdrs"] = self.phdrs
 		res["ELF"]["shdrs"] = self.shdrs
-		res["ELF"]["segments"] = self.segments
-		res["ELF"]["sections"] = self.sections
 
 		self.debug(res)
 		
@@ -635,18 +631,21 @@ class ELF:
 
 			for i in range(self.ehdr["e_phnum"]):
 				bm.writeStruct(self.phdrs[i], Elf_Phdr, endian = endian)
+				if self.phdrs[i]["p_type"] == PT_LOAD:
+					prev_cursor = bm.tell()
+					segment, new_cursor, seg_size = self.phdrs[i]["contents"]
+					bm.seek(new_cursor)
+					bm.writeBytes(segment)
+					bm.seek(prev_cursor)
 
 			bm.seek(self.ehdr["e_shoff"])
 			for i in range(self.ehdr["e_shnum"]):
 				bm.writeStruct(self.shdrs[i], Elf_Shdr, endian = endian)
-
-			for seg_contents, seg_start, seg_size in self.segments:
-				bm.seek(seg_start)
-				bm.writeBytes(seg_contents)
-
-			for section_contents, section_start, section_size in self.sections:
-				bm.seek(section_start)
-				bm.writeBytes(section_contents)
+				prev_cursor = bm.tell()
+				section, new_cursor, section_size = self.shdrs[i]["contents"]
+				bm.seek(new_cursor)
+				bm.writeBytes(section)
+				bm.seek(prev_cursor)
 
 			res = self.deserialize()
 
