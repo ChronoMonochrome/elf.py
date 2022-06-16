@@ -548,6 +548,7 @@ class ELF:
 
 			self.phdrs = []
 			self.shdrs = []
+			self.loadable_segments = []
 
 			for _ in range(self.ehdr["e_phnum"]):
 				elf_phdr = bm.readStruct(Elf_Phdr, endian = endian)
@@ -563,6 +564,7 @@ class ELF:
 					segment = bm.readBytes(segment_size)
 					bm.seek(cursor)
 					elf_phdr["contents"] = [segment, new_cursor, segment_size]
+					self.loadable_segments.append([new_cursor, segment_size])
 
 			bm.seek(self.ehdr["e_shoff"])
 			for _ in range(self.ehdr["e_shnum"]):
@@ -571,10 +573,19 @@ class ELF:
 				cursor = bm.tell()
 				new_cursor = elf_shdr["sh_offset"]
 				section_size = elf_shdr["sh_size"]
-				bm.seek(new_cursor)
-				section = bm.readBytes(section_size)
-				elf_shdr["contents"] = [section, new_cursor, section_size]
-				bm.seek(cursor)
+				elf_shdr["overlap"] = self.checkSectionOverlap(new_cursor, section_size)
+				if not elf_shdr["overlap"]:
+					bm.seek(new_cursor)
+					section = bm.readBytes(section_size)
+					elf_shdr["contents"] = [section, new_cursor, section_size]
+					bm.seek(cursor)
+
+	def checkSectionOverlap(self, section_start, section_size):
+		for seg_start, seg_size in self.loadable_segments:
+			if seg_start <= section_start <= seg_start + seg_size:
+				return True
+
+		return False
 
 	def debug(self, res):
 		global args
@@ -641,6 +652,8 @@ class ELF:
 			bm.seek(self.ehdr["e_shoff"])
 			for i in range(self.ehdr["e_shnum"]):
 				bm.writeStruct(self.shdrs[i], Elf_Shdr, endian = endian)
+				if self.shdrs[i]["overlap"]:
+					continue
 				prev_cursor = bm.tell()
 				section, new_cursor, section_size = self.shdrs[i]["contents"]
 				bm.seek(new_cursor)
